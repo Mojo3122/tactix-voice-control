@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+vehicle_data
+.git
+.gitignore
+.gitattributes
+*.ps1
+proposal
+docs
+.claude
+.env

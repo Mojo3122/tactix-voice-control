@@ -1,0 +1,123 @@
+# ════════════════════════════════════════════════════════════════
+#  TactixGlobalMCT — full stack
+#  One command brings up the entire system on any machine with Docker:
+#      docker compose up --build
+#  Then open  http://localhost:3001  → Open MCT shell hosting the
+#  Mission Control dashboard.
+# ════════════════════════════════════════════════════════════════
+services:
+  # ── PostgreSQL + TimescaleDB (canonical event/asset store) ──────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tactix_mct
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # db/*.sql run in filename order on FIRST boot (schema + seed data).
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tactix_mct"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # ── Valkey (Redis-compatible live cache + pub/sub) ──────────────
+  valkey:
+    image: valkey/valkey:latest
+    ports:
+      - "6379:6379"
+    command: ["valkey-server", "--save", "60", "1"]
+
+  # ── Apache AGE (mission context graph) ──────────────────────────
+  age:
+    image: apache/age:release_PG16_1.6.0
+    environment:
+      POSTGRES_USER: tactix
+      POSTGRES_PASSWORD: tactix
+      POSTGRES_DB: tactix_graph
+    ports:
+      - "5434:5432"
+    volumes:
+      - agedata:/var/lib/postgresql/data
+
+  # ── Offline voice model (Whisper STT) — no internet at runtime ──
+  whisper:
+    build:
+      context: .
+      dockerfile: whisper.Dockerfile
+      # Change the baked-in model here, then rebuild: docker compose build whisper
+      args:
+        WHISPER_MODEL: small
+    environment:
+      WHISPER_MODEL: small
+    # Reached internally as http://whisper:9200 by the server. Not exposed to the
+    # host to avoid clashing with any whisper_server.py you ran manually. To debug
+    # from the host, uncomment:  ports: ["9200:9200"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9200/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s   # first boot loads the model into memory
+
+  # ── Node server + Open MCT front-end ────────────────────────────
+  server:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      age:
+        condition: service_started
+      whisper:
+        condition: service_started
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/tactix_mct
+      VALKEY_URL: redis://valkey:6379
+      AGE_URL: postgresql://tactix:tactix@age:5432/tactix_graph
+      # No Jetson on the target machine by default — point at a dead
+      # address so the bridge stays quiet. Override to your Jetson IP.
+      JETSON_URL: http://127.0.0.1:0
+      # Optional: set to your camera to enable the PTZ video panel.
+      # RTSP_URL: rtsp://192.168.1.64:554/stream1
+      # Offline speech-to-text — reach the bundled whisper service by its
+      # compose DNS name. No host Python, no internet needed at runtime.
+      WHISPER_URL: http://whisper:9200
+      # Report Assistant (offline LLM). Ollama runs natively on the Windows
+      # host; from inside this container the host is host.docker.internal.
+      # IMPORTANT: on the host, set OLLAMA_HOST=0.0.0.0 so Ollama listens on
+      # all interfaces (it binds 127.0.0.1 by default and the container can't
+      # reach that). Then restart Ollama.
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: gemma3:1b
+      # Folder (inside the container) where generated .docx reports are read
+      # from. Bind-mounted from the Windows reports folder below.
+      REPORTS_DIR: /reports
+    ports:
+      - "3001:3001"
+    # Live-edit: bind-mount source over the image so host edits show on a
+    # plain browser refresh — no rebuild needed. node_modules stays from the
+    # image (not shadowed, since we only mount specific subfolders).
+    # Front-end (public/, openmct-host/) is live on refresh. Server changes
+    # under server/ land on disk but need a container restart to take effect:
+    #     docker compose restart server
+    volumes:
+      - ./public:/app/public
+      - ./openmct-host:/app/openmct-host
+      - ./server:/app/server
+      # Generated evaluation reports (read-only). Change the host path to
+      # wherever make_report.py writes them, e.g. C:\Tactix\Reports.
+      - "C:/Tactix/Reports:/reports:ro"
+    # Lets the container reach Ollama running on the Windows host. This is
+    # automatic on Docker Desktop, but declaring it is harmless and explicit.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pgdata:
+  agedata:

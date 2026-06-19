@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TactixMCT — Vehicle Node</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg:      #060a10;
+    --panel:   #0c1219;
+    --surface: #111921;
+    --line:    rgba(56,76,96,.45);
+    --text:    #d0d8e8;
+    --muted:   #5a6a80;
+    --accent:  #00d4ff;
+    --ok:      #00e88f;
+    --warn:    #ffb520;
+    --bad:     #ff3355;
+    --purple:  #9b6dff;
+    --sans:    'Outfit', sans-serif;
+    --mono:    'JetBrains Mono', monospace;
+    --shadow:  0 8px 32px rgba(0,0,0,.5);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box }
+  body { font-family:var(--sans); background:var(--bg); color:var(--text); height:100vh; overflow:hidden }
+
+  /* ═══ LOGIN ═══ */
+  .loginOverlay {
+    position:fixed; inset:0; z-index:50000;
+    background:var(--bg);
+    display:flex; align-items:center; justify-content:center;
+    transition:opacity .5s ease;
+  }
+  .loginOverlay.hidden { opacity:0; pointer-events:none }
+  .loginBox {
+    width:400px; padding:44px 40px;
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:18px; box-shadow:0 24px 80px rgba(0,0,0,.6);
+  }
+  .loginBox .lLogo {
+    width:64px; height:64px; border-radius:16px;
+    border:1px solid rgba(0,232,143,.4);
+    background:linear-gradient(135deg,rgba(0,232,143,.12),rgba(0,212,255,.08));
+    display:grid; place-items:center;
+    font-family:var(--mono); font-weight:700; font-size:20px; color:var(--ok);
+    margin:0 auto 18px;
+    position:relative;
+  }
+  .loginBox .lLogo::after {
+    content:''; position:absolute; inset:-4px; border-radius:20px;
+    border:1px solid rgba(0,232,143,.15);
+    animation:logoPulse 2.5s ease-in-out infinite;
+  }
+  @keyframes logoPulse {
+    0%,100%{opacity:.3;transform:scale(1)}
+    50%{opacity:.8;transform:scale(1.04)}
+  }
+  .loginBox h1 { text-align:center; font-size:20px; font-weight:600; margin-bottom:3px; letter-spacing:-.3px }
+  .loginBox .lSub { text-align:center; font-size:11px; color:var(--muted); margin-bottom:6px }
+  .loginBox .lArch { text-align:center; font-size:9px; color:var(--ok); letter-spacing:2px; text-transform:uppercase; margin-bottom:28px; font-family:var(--mono) }
+  .loginBox label { display:block; font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; font-weight:600; margin-bottom:6px }
+  .loginBox input {
+    width:100%; padding:11px 14px; border-radius:8px;
+    border:1px solid var(--line); background:rgba(0,0,0,.4);
+    color:var(--text); font-size:13px; font-family:var(--sans);
+    outline:none; margin-bottom:18px; transition:border-color .15s;
+  }
+  .loginBox input:focus { border-color:var(--ok) }
+  .loginBox input::placeholder { color:rgba(90,106,128,.5) }
+  .loginBtn {
+    width:100%; padding:12px; border-radius:10px; border:none;
+    background:linear-gradient(135deg,rgba(0,232,143,.15),rgba(0,212,255,.1));
+    border:1px solid rgba(0,232,143,.4);
+    color:var(--ok); font-size:13px; font-weight:600; font-family:var(--sans);
+    cursor:pointer; transition:all .15s; letter-spacing:.5px;
+  }
+  .loginBtn:hover { background:linear-gradient(135deg,rgba(0,232,143,.25),rgba(0,212,255,.18)); border-color:var(--ok) }
+  .loginBtn:active { transform:scale(.98) }
+  .loginBtn:disabled { opacity:.5; cursor:not-allowed }
+  .loginErr { color:var(--bad); font-size:11px; text-align:center; min-height:16px; margin-bottom:12px }
+  .loginFooter { text-align:center; margin-top:22px; font-size:8px; color:rgba(90,106,128,.4); letter-spacing:.8px; text-transform:uppercase }
+
+  /* ═══ APP LAYOUT ═══ */
+  .app { display:grid; grid-template-rows:48px 1fr; height:100vh }
+
+  /* Top Bar */
+  .topBar {
+    background:var(--panel); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 16px; z-index:200;
+  }
+  .topLeft { display:flex; align-items:center; gap:12px }
+  .brand {
+    display:flex; align-items:center; gap:10px; cursor:pointer;
+  }
+  .brandIcon {
+    width:30px; height:30px; border-radius:8px;
+    border:1px solid rgba(0,232,143,.3);
+    background:linear-gradient(135deg,rgba(0,232,143,.1),rgba(0,212,255,.06));
+    display:grid; place-items:center;
+    font-family:var(--mono); font-weight:700; font-size:11px; color:var(--ok);
+  }
+  .brandText h1 { font-size:13px; font-weight:600; line-height:1.1 }
+  .brandText span { font-size:8px; color:var(--ok); letter-spacing:1.5px; text-transform:uppercase; font-family:var(--mono) }
+
+  .statusPills { display:flex; gap:8px; align-items:center }
+  .pill {
+    display:flex; align-items:center; gap:5px;
+    font-size:9px; font-weight:600; font-family:var(--mono);
+    letter-spacing:.5px; text-transform:uppercase;
+    padding:3px 8px; border-radius:5px;
+    border:1px solid var(--line); background:rgba(0,0,0,.2);
+  }
+  .pill .dot { width:6px; height:6px; border-radius:50% }
+  .pill.on .dot { background:var(--ok); box-shadow:0 0 8px rgba(0,232,143,.5) }
+  .pill.off .dot { background:var(--bad); box-shadow:0 0 8px rgba(255,51,85,.3) }
+  .pill.warn .dot { background:var(--warn); box-shadow:0 0 8px rgba(255,181,32,.3) }
+
+  .topRight { display:flex; align-items:center; gap:10px }
+  .opBadge {
+    display:flex; align-items:center; gap:8px;
+    border:1px solid var(--line); background:rgba(0,0,0,.2);
+    border-radius:8px; padding:4px 10px;
+  }
+  .opAvatar {
+    width:24px; height:24px; border-radius:6px;
+    background:linear-gradient(135deg,rgba(0,232,143,.2),rgba(0,212,255,.12));
+    border:1px solid rgba(0,232,143,.3);
+    display:grid; place-items:center;
+    font-family:var(--mono); font-size:9px; font-weight:700; color:var(--ok);
+  }
+  .opInfo .opName { font-size:10px; font-weight:600 }
+  .opInfo .opRole { font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px }
+  .opLogout { background:none; border:none; color:var(--muted); cursor:pointer; font-size:11px; padding:2px 4px }
+  .opLogout:hover { color:var(--bad) }
+
+  /* ═══ MAIN CONTENT ═══ */
+  .mainContent { display:grid; grid-template-columns:1fr 380px; overflow:hidden }
+
+  /* Map */
+  .mapArea { position:relative }
+  #map { width:100%; height:100%; background:var(--bg) }
+  .mapOverlay {
+    position:absolute; bottom:12px; left:12px; z-index:400;
+    display:flex; gap:8px;
+  }
+  .mapBadge {
+    background:rgba(6,10,16,.85); border:1px solid var(--line);
+    border-radius:6px; padding:3px 10px;
+    font-family:var(--mono); font-size:10px; color:var(--accent);
+    backdrop-filter:blur(8px);
+  }
+
+  /* Tooltip styling for map */
+  .mapTip.leaflet-tooltip { background:var(--panel)!important; color:var(--text)!important; border:1px solid var(--line)!important; border-radius:8px!important; box-shadow:var(--shadow)!important; font-family:var(--sans)!important; font-size:11px; line-height:1.5; padding:8px 12px }
+  .mapTip.leaflet-tooltip::before { border-top-color:var(--panel)!important }
+  .leaflet-marker-icon { cursor:pointer!important }
+
+  /* ═══ SIDE PANEL ═══ */
+  .sidePanel {
+    background:var(--panel); border-left:1px solid var(--line);
+    overflow-y:auto; display:flex; flex-direction:column;
+  }
+  .sidePanel::-webkit-scrollbar { width:4px }
+  .sidePanel::-webkit-scrollbar-thumb { background:var(--line); border-radius:4px }
+
+  .panelSection {
+    padding:14px 16px; border-bottom:1px solid var(--line);
+  }
+  .panelSection h3 {
+    font-size:10px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:1.5px; font-weight:600; margin-bottom:10px;
+    font-family:var(--mono);
+  }
+
+  /* Sentry Card */
+  .sentryCard {
+    border:1px solid var(--line); border-radius:10px;
+    background:var(--surface); overflow:hidden; cursor:pointer;
+    transition:all .15s;
+  }
+  .sentryCard:hover { border-color:rgba(0,212,255,.4); transform:translateY(-1px) }
+  .sentryCard.active { border-color:var(--accent); box-shadow:0 0 20px rgba(0,212,255,.1) }
+  .sentryHeader {
+    padding:10px 14px; display:flex; align-items:center; justify-content:space-between;
+  }
+  .sentryLeft { display:flex; align-items:center; gap:10px }
+  .sentryIcon {
+    width:36px; height:36px; border-radius:8px;
+    border:1px solid rgba(0,232,143,.3);
+    background:linear-gradient(135deg,rgba(0,232,143,.1),transparent);
+    display:grid; place-items:center;
+    font-size:16px;
+  }
+  .sentryName { font-size:13px; font-weight:600 }
+  .sentryType { font-size:9px; color:var(--muted); font-family:var(--mono); text-transform:uppercase; letter-spacing:.5px }
+  .statusTag {
+    font-size:8px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+    padding:2px 8px; border-radius:4px; font-family:var(--mono);
+  }
+  .statusTag.online { background:rgba(0,232,143,.12); color:var(--ok); border:1px solid rgba(0,232,143,.3) }
+  .statusTag.standby { background:rgba(255,181,32,.1); color:var(--warn); border:1px solid rgba(255,181,32,.3) }
+  .statusTag.offline { background:rgba(255,51,85,.1); color:var(--bad); border:1px solid rgba(255,51,85,.3) }
+
+  /* Live Feed */
+  .feedBox {
+    background:#000; height:200px; position:relative;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .feedBox img { width:100%; height:100%; object-fit:contain }
+  .feedBox .liveTag {
+    position:absolute; top:8px; left:8px;
+    background:rgba(255,51,85,.85); color:#fff;
+    font-size:8px; font-weight:700; letter-spacing:1px;
+    padding:2px 7px; border-radius:4px; font-family:var(--mono);
+  }
+  .feedBox .fpsTag {
+    position:absolute; top:8px; right:8px;
+    background:rgba(0,0,0,.6); color:var(--accent);
+    font-size:8px; font-weight:600; padding:2px 6px; border-radius:3px; font-family:var(--mono);
+  }
+  .feedPlaceholder {
+    color:var(--muted); font-size:11px; text-align:center;
+    display:flex; flex-direction:column; gap:6px; align-items:center;
+  }
+  .feedPlaceholder input {
+    width:240px; padding:6px 8px; border-radius:6px;
+    border:1px solid var(--line); background:rgba(0,0,0,.3);
+    color:var(--text); font-size:10px; font-family:var(--mono); outline:none;
+  }
+  .feedPlaceholder button {
+    padding:4px 14px; border-radius:6px; border:1px solid rgba(0,212,255,.3);
+    background:rgba(0,212,255,.06); color:var(--accent); font-size:10px; cursor:pointer;
+  }
+
+  /* Stats Grid */
+  .statsGrid {
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;
+    padding:10px 14px;
+  }
+  .statBox {
+    background:var(--bg); border:1px solid var(--line);
+    border-radius:6px; padding:8px 10px; text-align:center;
+  }
+  .statBox .sLabel { font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; font-family:var(--mono); margin-bottom:2px }
+  .statBox .sVal { font-size:18px; font-weight:700; font-family:var(--mono) }
+
+  /* ═══ CONNECTION PANEL ═══ */
+  .connCard {
+    border:1px solid var(--line); border-radius:10px;
+    background:var(--surface); overflow:hidden;
+  }
+  .connHeader {
+    padding:10px 14px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--line);
+  }
+  .connTitle { font-size:12px; font-weight:600 }
+  .connBody { padding:12px 14px }
+  .connRow {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:6px 0; font-size:11px;
+  }
+  .connRow + .connRow { border-top:1px solid rgba(56,76,96,.2) }
+  .connLabel { color:var(--muted); font-size:10px }
+  .connVal { font-family:var(--mono); font-size:10px; font-weight:600 }
+  .connVal.ok { color:var(--ok) }
+  .connVal.bad { color:var(--bad) }
+  .connVal.warn { color:var(--warn) }
+
+  /* Sync Queue */
+  .syncBar {
+    height:4px; border-radius:2px; background:var(--bg);
+    margin-top:8px; overflow:hidden;
+  }
+  .syncFill { height:100%; border-radius:2px; transition:width .5s ease }
+
+  /* ═══ INFRA STATUS ═══ */
+  .infraGrid {
+    display:grid; grid-template-columns:1fr 1fr; gap:8px;
+  }
+  .infraCard {
+    border:1px solid var(--line); border-radius:8px;
+    background:var(--bg); padding:10px;
+  }
+  .infraCard .iName {
+    font-size:9px; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.8px; font-family:var(--mono); margin-bottom:4px;
+  }
+  .infraCard .iStatus { font-size:11px; font-weight:600 }
+  .infraCard .iDetail { font-size:9px; color:var(--muted); margin-top:2px }
+
+  /* ═══ EVENTS LOG ═══ */
+  .eventLog { display:flex; flex-direction:column; gap:4px }
+  .evtRow {
+    display:flex; align-items:center; gap:8px;
+    padding:6px 10px; border-radius:6px;
+    background:var(--bg); border:1px solid transparent;
+    font-size:11px; transition:all .12s;
+  }
+  .evtRow:hover { border-color:var(--line) }
+  .evtDot { width:6px; height:6px; border-radius:50%; flex-shrink:0 }
+  .evtDot.crit { background:var(--bad) }
+  .evtDot.high { background:var(--warn) }
+  .evtDot.med { background:var(--accent) }
+  .evtDot.low { background:var(--ok) }
+  .evtType { font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .evtConf { font-family:var(--mono); font-size:10px; color:var(--muted) }
+  .evtTime { font-family:var(--mono); font-size:9px; color:var(--muted) }
+
+  /* ═══ DETAIL VIEW ═══ */
+  .detailView { display:none; flex-direction:column; overflow-y:auto }
+  .detailView.show { display:flex }
+  .sideDefault.hide { display:none }
+
+  .detBack {
+    padding:10px 16px; border-bottom:1px solid var(--line);
+    font-size:11px; color:var(--accent); cursor:pointer;
+    display:flex; align-items:center; gap:6px;
+  }
+  .detBack:hover { background:rgba(0,212,255,.03) }
+
+  .detFeed { background:#000; height:300px; position:relative; display:flex; align-items:center; justify-content:center }
+  .detFeed img { width:100%; height:100%; object-fit:contain }
+  .detFeed .liveTag { position:absolute; top:10px; left:10px; background:rgba(255,51,85,.85); color:#fff; font-size:9px; font-weight:700; letter-spacing:1px; padding:3px 8px; border-radius:4px; font-family:var(--mono) }
+
+  .detStats { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; padding:12px 16px }
+  .dStat { background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:10px; text-align:center }
+  .dStat .dLabel { font-size:8px; color:var(--muted); text-transform:uppercase; letter-spacing:.8px; font-family:var(--mono); margin-bottom:3px }
+  .dStat .dVal { font-size:20px; font-weight:700; font-family:var(--mono) }
+
+  .detControls { padding:8px 16px }
+  .ctrlGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px }
+  .ctrlBtn {
+    padding:8px; border-radius:6px;
+    border:1px solid var(--line); background:var(--surface);
+    color:var(--text); font-size:10px; font-family:var(--sans);
+    cursor:pointer; text-align:center; transition:all .1s;
+  }
+  .ctrlBtn:hover { border-color:var(--accent); color:var(--accent); background:rgba(0,212,255,.04) }
+  .ctrlBtn:active { transform:scale(.96) }
+
+  .detEvents { padding:0 16px 16px }
+
+  /* ═══ MAP LAYER SWITCHER ═══ */
+  .mapLayers {
+    position:absolute; top:12px; left:12px; z-index:400;
+    display:flex; gap:4px;
+  }
+  .layerBtn {
+    padding:5px 10px; border-radius:6px;
+    border:1px solid var(--line); background:rgba(6,10,16,.85);
+    color:var(--muted); font-size:9px; font-weight:600;
+    font-family:var(--mono); letter-spacing:.5px; text-transform:uppercase;
+    cursor:pointer; transition:all .12s; backdrop-filter:blur(8px);
+  }
+  .layerBtn:hover { border-color:var(--accent); color:var(--text) }
+  .layerBtn.active { border-color:var(--accent); color:var(--accent); background:rgba(0,212,255,.08) }
+
+  /* ═══ MAP SEARCH ═══ */
+  .mapSearch {
+    position:absolute; top:12px; right:50px; z-index:400;
+    display:flex; align-items:center; gap:0;
+  }
+  .mapSearch input {
+    width:0; padding:6px 0; border:1px solid var(--line);
+    border-radius:6px 0 0 6px; background:rgba(6,10,16,.9);
+    color:var(--text); font-size:11px; font-family:var(--sans);
+    outline:none; transition:all .25s ease; backdrop-filter:blur(8px);
+    opacity:0;
+  }
+  .mapSearch.open input {
+    width:220px; padding:6px 10px; opacity:1;
+    border-color:var(--accent);
+  }
+  .mapSearch input::placeholder { color:var(--muted) }
+  .searchBtn {
+    width:32px; height:30px; border-radius:6px;
+    border:1px solid var(--line); background:rgba(6,10,16,.85);
+    color:var(--muted); font-size:13px; cursor:pointer;
+    display:grid; place-items:center; transition:all .12s;
+    backdrop-filter:blur(8px); flex-shrink:0;
+  }
+  .mapSearch.open .searchBtn { border-radius:0 6px 6px 0 }
+  .searchBtn:hover { border-color:var(--accent); color:var(--accent) }
+  .searchResults {
+    position:absolute; top:36px; right:0; width:260px;
+    background:rgba(12,18,25,.95); border:1px solid var(--line);
+    border-radius:8px; box-shadow:var(--shadow);
+    max-height:200px; overflow-y:auto; display:none;
+    backdrop-filter:blur(12px);
+  }
+  .searchResults.show { display:block }
+  .srItem {
+    padding:8px 12px; font-size:11px; cursor:pointer;
+    border-bottom:1px solid rgba(56,76,96,.2); transition:background .1s;
+  }
+  .srItem:last-child { border-bottom:none }
+  .srItem:hover { background:rgba(0,212,255,.06) }
+  .srItem .srName { font-weight:500; color:var(--text); margin-bottom:1px }
+  .srItem .srAddr { font-size:9px; color:var(--muted) }
+  .srNone { padding:12px; text-align:center; font-size:11px; color:var(--muted) }
+
+  /* ═══ ALERT BANNER ═══ */
+  .alertBanner {
+    position:absolute; top:0; left:0; right:0; z-index:3000;
+    height:44px; overflow:hidden;
+    opacity:0; pointer-events:none;
+    transition:opacity .3s ease;
+  }
+  .alertBanner.show { opacity:1; pointer-events:auto }
+  .abBar {
+    height:100%; display:flex; align-items:center; gap:12px;
+    font-family:var(--mono); font-size:12px; font-weight:700;
+    letter-spacing:1.2px; text-transform:uppercase; padding:0 14px;
+  }
+  .alertBanner.sev-critical .abBar { background:linear-gradient(90deg,#c41428,#e82040,#c41428); color:#fff; border-bottom:2px solid #ff4060 }
+  .alertBanner.sev-high .abBar { background:linear-gradient(90deg,#b85a00,#e07000,#b85a00); color:#fff; border-bottom:2px solid #ff9030 }
+  .alertBanner.sev-medium .abBar { background:linear-gradient(90deg,rgba(0,60,90,.95),rgba(0,80,120,.95)); color:var(--accent); border-bottom:2px solid rgba(0,212,255,.4) }
+  .alertBanner.sev-low .abBar { background:linear-gradient(90deg,rgba(0,50,40,.95),rgba(0,70,55,.95)); color:var(--ok); border-bottom:2px solid rgba(0,232,143,.3) }
+  .abPulse { width:10px; height:10px; border-radius:50%; background:#fff; flex-shrink:0; animation:abBlink .6s infinite }
+  @keyframes abBlink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.15;transform:scale(.7)} }
+  .abMarquee { flex:1; overflow:hidden; position:relative }
+  .abTrack { display:flex; gap:100px; animation:abScroll 14s linear infinite; white-space:nowrap }
+  @keyframes abScroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+  .abClose { background:rgba(0,0,0,.3); border:none; color:#fff; font-size:14px; cursor:pointer; padding:4px 10px; border-radius:4px; flex-shrink:0 }
+  .abClose:hover { background:rgba(0,0,0,.5) }
+
+  /* Toast */
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(10px);
+    background:var(--panel); border:1px solid var(--line); color:var(--text);
+    padding:8px 20px; border-radius:8px; font-size:12px;
+    opacity:0; transition:all .2s; z-index:60000; pointer-events:none;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0) }
+
+  /* ═══ MOBILE TAB BAR ═══ */
+  .mobileTabBar {
+    display:none; position:fixed; bottom:0; left:0; right:0; z-index:5000;
+    background:var(--panel); border-top:1px solid var(--line);
+    height:52px; padding:0 8px;
+    justify-content:space-around; align-items:center;
+  }
+  .mTab {
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:2px;
+    background:none; border:none; color:var(--muted); font-size:16px;
+    cursor:pointer; padding:6px 0; font-family:var(--sans);
+  }
+  .mTab span { font-size:8px; font-weight:600; letter-spacing:.5px; text-transform:uppercase }
+  .mTab.active { color:var(--accent) }
+  .mTab.active span { color:var(--accent) }
+
+  /* ═══ RESPONSIVE ═══ */
+  @media (max-width: 768px) {
+    body { overflow:hidden }
+
+    /* Login */
+    .loginBox { width:92vw; padding:28px 24px; border-radius:14px }
+    .loginBox h1 { font-size:18px }
+    .loginBox .lLogo { width:52px; height:52px; font-size:17px }
+    .loginFooter { font-size:7px }
+
+    /* App grid */
+    .app { grid-template-rows:44px 1fr }
+
+    /* Top bar */
+    .topBar { padding:0 8px; gap:6px }
+    .brand { gap:6px }
+    .brandIcon { width:26px; height:26px; font-size:9px; border-radius:6px }
+    .brandText h1 { font-size:11px }
+    .brandText span { font-size:7px; letter-spacing:1px }
+    .statusPills { display:none }
+    .opBadge { padding:3px 6px; gap:5px }
+    .opAvatar { width:20px; height:20px; font-size:8px; border-radius:4px }
+    .opInfo .opName { font-size:9px }
+    .opInfo .opRole { font-size:7px }
+    .opLogout { font-size:10px }
+
+    /* Main content — full width stacked, controlled by JS tabs */
+    .mainContent {
+      display:grid; grid-template-columns:1fr; grid-template-rows:1fr;
+      overflow:hidden; position:relative;
+      padding-bottom:52px; /* space for tab bar */
+    }
+    .mapArea { grid-row:1; grid-column:1; display:block }
+    .sidePanel {
+      grid-row:1; grid-column:1;
+      display:none; border-left:none; border-top:1px solid var(--line);
+      position:absolute; inset:0; bottom:0;
+      z-index:100; overflow-y:auto;
+    }
+    .sidePanel.mShow { display:flex }
+    .mapArea.mHide { visibility:hidden }
+
+    /* Map controls */
+    .mapLayers { top:8px; left:8px; gap:3px }
+    .layerBtn { padding:4px 7px; font-size:8px }
+    .mapSearch { top:8px; right:40px }
+    .mapSearch.open input { width:160px; padding:5px 8px; font-size:10px }
+    .searchBtn { width:28px; height:26px; font-size:11px }
+    .searchResults { width:220px; top:32px }
+    .srItem { padding:6px 10px; font-size:10px }
+    .mapOverlay { bottom:8px; left:8px; gap:4px }
+    .mapBadge { font-size:9px; padding:2px 7px }
+    .leaflet-control-zoom { transform:scale(.85); transform-origin:top right }
+
+    /* Alert banner */
+    .alertBanner { height:36px }
+    .abBar { font-size:10px; padding:0 8px; gap:8px; letter-spacing:.8px }
+    .abPulse { width:8px; height:8px }
+
+    /* Side panel sections */
+    .panelSection { padding:10px 12px }
+    .panelSection h3 { font-size:9px; margin-bottom:8px; letter-spacing:1.2px }
+
+    /* Sentry card */
+    .sentryHeader { padding:8px 10px }
+    .sentryIcon { width:30px; height:30px; font-size:14px; border-radius:6px }
+    .sentryName { font-size:12px }
+    .sentryType { font-size:8px }
+    .feedBox { height:180px }
+    .statsGrid { padding:8px 10px; gap:6px }
+    .statBox { padding:6px 8px }
+    .statBox .sLabel { font-size:7px }
+    .statBox .sVal { font-size:16px }
+
+    /* Connection card */
+    .connHeader { padding:8px 10px }
+    .connTitle { font-size:11px }
+    .connBody { padding:10px 12px }
+    .connRow { font-size:10px; padding:5px 0 }
+    .connLabel { font-size:9px }
+    .connVal { font-size:9px }
+
+    /* Infra grid */
+    .infraGrid { gap:6px }
+    .infraCard { padding:8px }
+    .infraCard .iName { font-size:8px }
+    .infraCard .iStatus { font-size:10px }
+    .infraCard .iDetail { font-size:8px }
+
+    /* Event log */
+    .evtRow { padding:5px 8px; gap:6px; font-size:10px }
+    .evtConf { font-size:9px }
+    .evtTime { font-size:8px }
+
+    /* Detail view */
+    .detBack { padding:8px 12px; font-size:10px }
+    .detFeed { height:220px }
+    .detStats { grid-template-columns:repeat(4,1fr); gap:4px; padding:8px 12px }
+    .dStat { padding:8px 4px }
+    .dStat .dLabel { font-size:7px }
+    .dStat .dVal { font-size:16px }
+    .detControls { padding:6px 12px }
+    .ctrlGrid { grid-template-columns:repeat(4,1fr); gap:4px }
+    .ctrlBtn { padding:6px 4px; font-size:9px }
+    .detEvents { padding:0 12px 12px }
+
+    /* Show mobile tab bar */
+    .mobileTabBar { display:flex }
+  }
+
+  /* Small phones */
+  @media (max-width: 400px) {
+    .loginBox { padding:22px 18px }
+    .loginBox h1 { font-size:16px }
+    .loginBox input { padding:9px 11px; font-size:12px; margin-bottom:14px }
+    .loginBtn { padding:10px; font-size:12px }
+    .brandText h1 { font-size:10px }
+    .brandText span { display:none }
+    .opInfo .opName { font-size:8px }
+    .opInfo .opRole { display:none }
+    .mapSearch.open input { width:130px }
+    .layerBtn { padding:3px 5px; font-size:7px }
+    .feedBox { height:150px }
+    .detFeed { height:180px }
+    .detStats { grid-template-columns:repeat(2,1fr) }
+    .ctrlGrid { grid-template-columns:repeat(2,1fr) }
+  }
+</style>
+</head>
+
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div class="loginOverlay" id="loginOverlay">
+  <div class="loginBox">
+    <div class="lLogo">VN</div>
+    <h1>TactixGlobalMCT</h1>
+    <div class="lSub">Vehicle Node — Edge Console</div>
+    <div class="lArch">Model C · Edge-First · Closed-Loop</div>
+    <div class="loginErr" id="loginErr"></div>
+    <label>Operator ID</label>
+    <input id="loginUser" placeholder="Username" autocomplete="username" spellcheck="false">
+    <label>Access Key</label>
+    <input id="loginPass" type="password" placeholder="Password" autocomplete="current-password">
+    <button class="loginBtn" id="loginBtn">Authenticate &rarr;</button>
+    <div class="loginFooter">TACTIX DEFENCE SYSTEMS LLP &middot; VEHICLE NODE &middot; CLASSIFIED</div>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div class="app" id="appMain" style="display:none">
+
+  <!-- Top Bar -->
+  <div class="topBar">
+    <div class="topLeft">
+      <div class="brand" id="brandHome">
+        <div class="brandIcon">VN</div>
+        <div class="brandText">
+          <h1>TactixGlobalMCT</h1>
+          <span>Vehicle Node · Edge-First</span>
+        </div>
+      </div>
+      <div class="statusPills">
+        <div class="pill on" id="pillLocal"><div class="dot"></div>LOCAL</div>
+        <div class="pill on" id="pillVK"><div class="dot"></div>VK</div>
+        <div class="pill on" id="pillPG"><div class="dot"></div>PG</div>
+        <div class="pill off" id="pillCR"><div class="dot"></div>CTRL ROOM</div>
+        <div class="pill on" id="pillSentry"><div class="dot"></div>SENTRY-1</div>
+      </div>
+    </div>
+    <div class="topRight">
+      <div class="opBadge">
+        <div class="opAvatar" id="opAvatar">--</div>
+        <div class="opInfo">
+          <div class="opName" id="opName">&mdash;</div>
+          <div class="opRole" id="opRole">&mdash;</div>
+        </div>
+        <button class="opLogout" id="opLogout" title="Logout">&#9211;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="mainContent">
+
+    <!-- Map -->
+    <div class="mapArea">
+      <div id="map"></div>
+      <div class="mapLayers">
+        <button class="layerBtn active" id="lStreet" onclick="setLayer('street')">Street</button>
+        <button class="layerBtn" id="lSat" onclick="setLayer('satellite')">Satellite</button>
+        <button class="layerBtn" id="lTerrain" onclick="setLayer('terrain')">Terrain</button>
+        <button class="layerBtn" id="lDark" onclick="setLayer('dark')">Dark</button>
+      </div>
+      <div class="mapSearch" id="mapSearch">
+        <input id="searchInput" placeholder="Search street, place..." spellcheck="false" autocomplete="off">
+        <button class="searchBtn" id="searchBtn" title="Search">&#128269;</button>
+        <div class="searchResults" id="searchResults"></div>
+      </div>
+      <div class="alertBanner" id="alertBanner">
+        <div class="abBar">
+          <div class="abPulse"></div>
+          <div class="abMarquee"><div class="abTrack" id="abTrack"><span id="abText">&mdash;</span><span id="abText2">&mdash;</span></div></div>
+          <button class="abClose" id="abClose">&times;</button>
+        </div>
+      </div>
+      <div class="mapOverlay">
+        <div class="mapBadge" id="coordBadge">12.9716, 77.5946</div>
+        <div class="mapBadge" id="evtBadge">Events: 0</div>
+      </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="sidePanel">
+
+      <!-- DEFAULT VIEW -->
+      <div class="sideDefault" id="sideDefault">
+
+        <!-- Sentry-1 Card -->
+        <div class="panelSection">
+          <h3>&#128225; Sentry Asset</h3>
+          <div class="sentryCard" id="sentryCard" onclick="openSentryDetail()">
+            <div class="sentryHeader">
+              <div class="sentryLeft">
+                <div class="sentryIcon">&#127909;</div>
+                <div>
+                  <div class="sentryName">Sentry-1</div>
+                  <div class="sentryType">ptz · veh-01</div>
+                </div>
+              </div>
+              <div class="statusTag online" id="sentryStatus">ONLINE</div>
+            </div>
+            <div class="feedBox" id="feedBox">
+              <div class="liveTag">&#9679; LIVE</div>
+              <img id="feedImg" alt="Connecting...">
+              <div class="fpsTag" id="fpsTag">-- FPS</div>
+            </div>
+            <div class="statsGrid">
+              <div class="statBox"><div class="sLabel">Persons</div><div class="sVal" id="sPersons" style="color:var(--bad)">0</div></div>
+              <div class="statBox"><div class="sLabel">Vehicles</div><div class="sVal" id="sVehicles" style="color:var(--warn)">0</div></div>
+              <div class="statBox"><div class="sLabel">Plates</div><div class="sVal" id="sPlates" style="color:var(--accent)">0</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Control Room Connection -->
+        <div class="panelSection">
+          <h3>&#128225; Control Room Link</h3>
+          <div class="connCard">
+            <div class="connHeader">
+              <div class="connTitle">Wi-Fi HaLow Bridge</div>
+              <div class="statusTag offline" id="crStatus">DISCONNECTED</div>
+            </div>
+            <div class="connBody">
+              <div class="connRow"><span class="connLabel">CR Server</span><span class="connVal" id="crAddr">--</span></div>
+              <div class="connRow"><span class="connLabel">Latency</span><span class="connVal" id="crLatency">--</span></div>
+              <div class="connRow"><span class="connLabel">Last Sync</span><span class="connVal" id="crLastSync">Never</span></div>
+              <div class="connRow">
+                <span class="connLabel">Sync Queue</span>
+                <span class="connVal" id="crQueue">0 events</span>
+              </div>
+              <div class="syncBar"><div class="syncFill" id="syncFill" style="width:0%;background:var(--ok)"></div></div>
+              <div style="margin-top:10px;display:flex;gap:6px">
+                <input id="crInput" placeholder="http://192.168.0.xxx:3001" style="flex:1;padding:5px 8px;border-radius:5px;border:1px solid var(--line);background:rgba(0,0,0,.3);color:var(--text);font-size:10px;font-family:var(--mono);outline:none">
+                <button onclick="connectCR()" style="padding:4px 12px;border-radius:5px;border:1px solid rgba(0,232,143,.3);background:rgba(0,232,143,.06);color:var(--ok);font-size:10px;cursor:pointer">Link</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Local Infrastructure -->
+        <div class="panelSection">
+          <h3>&#9881; Local Infrastructure</h3>
+          <div class="infraGrid">
+            <div class="infraCard"><div class="iName">Valkey</div><div class="iStatus" id="iVK" style="color:var(--ok)">Online</div><div class="iDetail">Event Bus · Cache</div></div>
+            <div class="infraCard"><div class="iName">Postgres</div><div class="iStatus" id="iPG" style="color:var(--ok)">Online</div><div class="iDetail">TimescaleDB</div></div>
+            <div class="infraCard"><div class="iName">Apache AGE</div><div class="iStatus" id="iAGE" style="color:var(--muted)">Standby</div><div class="iDetail">Context Graph</div></div>
+            <div class="infraCard"><div class="iName">Storage</div><div class="iStatus" id="iStore" style="color:var(--ok)">Ready</div><div class="iDetail">Video · Images</div></div>
+          </div>
+        </div>
+
+        <!-- Recent Events -->
+        <div class="panelSection" style="flex:1">
+          <h3>&#128203; Recent Events</h3>
+          <div class="eventLog" id="eventLog">
+            <div style="color:var(--muted);text-align:center;padding:20px;font-size:11px">Waiting for detections...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAIL VIEW (Sentry-1 expanded) -->
+      <div class="detailView" id="detailView">
+        <div class="detBack" id="detBack">&larr; Back to Overview</div>
+        <div class="detFeed" id="detFeedBox">
+          <div class="liveTag">&#9679; LIVE</div>
+          <img id="detFeedImg" alt="Feed">
+        </div>
+        <div class="detStats">
+          <div class="dStat"><div class="dLabel">Persons</div><div class="dVal" id="dPersons" style="color:var(--bad)">0</div></div>
+          <div class="dStat"><div class="dLabel">Vehicles</div><div class="dVal" id="dVehicles" style="color:var(--warn)">0</div></div>
+          <div class="dStat"><div class="dLabel">Plates</div><div class="dVal" id="dPlates" style="color:var(--accent)">0</div></div>
+          <div class="dStat"><div class="dLabel">Events</div><div class="dVal" id="dEvents" style="color:var(--purple)">0</div></div>
+        </div>
+        <div class="detControls">
+          <h3 style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-family:var(--mono);margin-bottom:8px">&#127919; PTZ Controls</h3>
+          <div class="ctrlGrid">
+            <button class="ctrlBtn" onclick="toast('Pan Left')">&larr; Pan</button>
+            <button class="ctrlBtn" onclick="toast('Pan Right')">Pan &rarr;</button>
+            <button class="ctrlBtn" onclick="toast('Tilt Up')">&uarr; Tilt</button>
+            <button class="ctrlBtn" onclick="toast('Tilt Down')">&darr; Tilt</button>
+            <button class="ctrlBtn" onclick="toast('Zoom+')" style="border-color:rgba(0,212,255,.3)">&#128269; Zoom+</button>
+            <button class="ctrlBtn" onclick="toast('Zoom-')" style="border-color:rgba(0,212,255,.3)">&#128269; Zoom-</button>
+            <button class="ctrlBtn" onclick="toast('Auto Patrol')" style="border-color:rgba(0,232,143,.3);color:var(--ok)">&#8634; Auto</button>
+            <button class="ctrlBtn" onclick="toast('Snapshot')" style="border-color:rgba(155,109,255,.3);color:var(--purple)">&#128248; Snap</button>
+          </div>
+        </div>
+        <div class="detEvents panelSection">
+          <h3>&#128203; Detection Log</h3>
+          <div class="eventLog" id="detEventLog"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Tab Bar -->
+<div class="mobileTabBar" id="mobileTabBar">
+  <button class="mTab active" id="mTabMap" onclick="mobileTab('map')">&#127758;<span>Map</span></button>
+  <button class="mTab" id="mTabSentry" onclick="mobileTab('sentry')">&#127909;<span>Sentry</span></button>
+  <button class="mTab" id="mTabLink" onclick="mobileTab('link')">&#128225;<span>Link</span></button>
+  <button class="mTab" id="mTabEvents" onclick="mobileTab('events')">&#128203;<span>Events</span></button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════ CONFIG ═══════════
+var JETSON = 'http://192.168.0.133:9090';
+var LOCAL_API = window.location.origin + '/api';
+var CR_API = '';  // Control room — set via Link button
+var authToken = null, currentOperator = null;
+var map, sentryMarker, vehicleMarker;
+var allEvents = [];
+var streamTimer = null, feedFps = 0, feedFrames = 0;
+var detailOpen = false;
+var crConnected = false, crWs = null;
+
+function $(id) { return document.getElementById(id) }
+function toast(m) { var t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){t.classList.remove('show')},1200) }
+
+// ═══════════ OPERATORS ═══════════
+var OPERATORS = {
+  'admin':   { password:'tactix2026',  name:'Admin',        role:'Supervisor',       id:'OP-001' },
+  'abdul':   { password:'tactix123',   name:'Abdul',        role:'CV Engineer',      id:'OP-002' },
+  'sentry01':{ password:'watch2026',   name:'Sentry Alpha', role:'Watch Officer',    id:'OP-003' },
+  'cmd':     { password:'command2026', name:'Commander',     role:'Mission Commander',id:'OP-005' },
+};
+
+// ═══════════ AUTH ═══════════
+function doLogin() {
+  var user=$('loginUser').value.trim().toLowerCase(), pass=$('loginPass').value;
+  if(!user||!pass){$('loginErr').textContent='Enter credentials';return}
+  $('loginBtn').disabled=true; $('loginBtn').textContent='Authenticating...';
+  var op = OPERATORS[user];
+  if(!op || op.password!==pass) {
+    $('loginErr').textContent='Invalid credentials';
+    $('loginBtn').disabled=false; $('loginBtn').innerHTML='Authenticate &rarr;';
+    $('loginPass').value=''; return;
+  }
+  currentOperator = {username:user, name:op.name, role:op.role, id:op.id};
+  sessionStorage.setItem('vn_op', JSON.stringify(currentOperator));
+  showDashboard();
+}
+
+function showDashboard() {
+  $('loginOverlay').classList.add('hidden');
+  $('appMain').style.display='';
+  if(currentOperator) {
+    var ini = currentOperator.name.split(' ').map(function(w){return w[0]}).join('').substring(0,2).toUpperCase();
+    $('opAvatar').textContent=ini;
+    $('opName').textContent=currentOperator.name;
+    $('opRole').textContent=currentOperator.role+' · '+currentOperator.id;
+  }
+  setTimeout(function(){$('loginOverlay').remove()},600);
+  boot();
+}
+
+function doLogout() { sessionStorage.removeItem('vn_op'); location.reload() }
+
+function checkSession() {
+  var s=sessionStorage.getItem('vn_op');
+  if(s){currentOperator=JSON.parse(s);showDashboard()}
+  else{$('loginOverlay').classList.remove('hidden');$('appMain').style.display='none';$('loginUser').focus()}
+}
+
+$('loginBtn').onclick=doLogin;
+$('loginPass').onkeydown=function(e){if(e.key==='Enter')doLogin()};
+$('loginUser').onkeydown=function(e){if(e.key==='Enter')$('loginPass').focus()};
+$('opLogout').onclick=doLogout;
+
+// ═══════════ MAP ═══════════
+var BASE = [12.9716, 77.5946];
+
+var streetL, satL, terrainL, darkL, currentLayer;
+
+function initMap() {
+  map = L.map('map',{zoomControl:false, attributionControl:false}).setView(BASE, 15);
+
+  darkL = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19});
+  streetL = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19});
+  satL = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19});
+  terrainL = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{maxZoom:17});
+
+  streetL.addTo(map);
+  currentLayer = streetL;
+
+  L.control.zoom({position:'topright'}).addTo(map);
+
+  // Vehicle marker
+  var vIcon = L.divIcon({className:'',html:'<div style="width:32px;height:32px;border-radius:50%;background:rgba(0,232,143,.15);border:2px solid #00e88f;display:grid;place-items:center;font-size:14px;box-shadow:0 0 16px rgba(0,232,143,.3)">&#128663;</div>',iconSize:[32,32],iconAnchor:[16,16]});
+  vehicleMarker = L.marker(BASE,{icon:vIcon}).addTo(map).bindTooltip('<div style="color:#d0d8e8"><strong>Vehicle Node</strong><br>VEH-01 · Mobile<br><span style="color:#00e88f;font-size:9px">You are here</span></div>',{className:'mapTip',direction:'top',offset:[0,-16]});
+
+  // Sentry-1 marker
+  var sIcon = L.divIcon({className:'',html:'<div style="width:28px;height:28px;border-radius:50%;background:rgba(0,212,255,.15);border:2px solid #00d4ff;display:grid;place-items:center;font-size:12px;box-shadow:0 0 14px rgba(0,212,255,.3)">&#127909;</div>',iconSize:[28,28],iconAnchor:[14,14]});
+  sentryMarker = L.marker([BASE[0]+.003,BASE[1]+.004],{icon:sIcon}).addTo(map)
+    .bindTooltip('<div style="color:#d0d8e8"><strong>Sentry-1</strong><br>PTZ Camera · ONLINE<br><span style="color:#00d4ff;font-size:9px">Click to open</span></div>',{className:'mapTip',direction:'top',offset:[0,-14]})
+    .on('click', function(){ openSentryDetail() });
+
+  map.on('mousemove',function(e){ $('coordBadge').textContent=e.latlng.lat.toFixed(5)+', '+e.latlng.lng.toFixed(5) });
+}
+
+// ═══════════ MAP SEARCH ═══════════
+var searchMarker = null, searchDebounce = null;
+
+$('searchBtn').onclick = function() {
+  var box = $('mapSearch');
+  if(!box.classList.contains('open')) {
+    box.classList.add('open');
+    $('searchInput').focus();
+  } else if($('searchInput').value.trim()) {
+    doSearch($('searchInput').value.trim());
+  } else {
+    box.classList.remove('open');
+    $('searchResults').classList.remove('show');
+  }
+};
+
+$('searchInput').oninput = function() {
+  clearTimeout(searchDebounce);
+  var q = this.value.trim();
+  if(q.length < 3) { $('searchResults').classList.remove('show'); return }
+  searchDebounce = setTimeout(function(){ doSearch(q) }, 400);
+};
+
+$('searchInput').onkeydown = function(e) {
+  if(e.key === 'Enter') { e.preventDefault(); doSearch(this.value.trim()) }
+  if(e.key === 'Escape') {
+    $('mapSearch').classList.remove('open');
+    $('searchResults').classList.remove('show');
+    this.value = '';
+  }
+};
+
+function doSearch(query) {
+  if(!query) return;
+  // Use Nominatim (OpenStreetMap) geocoding — free, no API key
+  fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(query)+'&limit=6&addressdetails=1&countrycodes=in')
+  .then(function(r){ return r.json() })
+  .then(function(results){
+    var panel = $('searchResults');
+    if(!results || results.length === 0) {
+      panel.innerHTML = '<div class="srNone">No results for "'+query+'"</div>';
+      panel.classList.add('show');
+      return;
+    }
+    panel.innerHTML = results.map(function(r, i){
+      var name = r.display_name.split(',')[0];
+      var addr = r.display_name.split(',').slice(1,3).join(',').trim();
+      return '<div class="srItem" onclick="goToResult('+r.lat+','+r.lon+',\''+name.replace(/'/g,"\\'")+'\')">' +
+        '<div class="srName">'+name+'</div>' +
+        '<div class="srAddr">'+addr+'</div>' +
+      '</div>';
+    }).join('');
+    panel.classList.add('show');
+  })
+  .catch(function(){ toast('Search failed — check network') });
+}
+
+function goToResult(lat, lng, name) {
+  // Remove old search marker
+  if(searchMarker) { map.removeLayer(searchMarker); searchMarker = null }
+
+  // Fly to location
+  map.flyTo([lat, lng], 17, { duration: 1.2 });
+
+  // Drop pin
+  var icon = L.divIcon({
+    className:'',
+    html:'<div style="width:24px;height:24px;border-radius:50%;background:rgba(155,109,255,.2);border:2px solid #9b6dff;display:grid;place-items:center;font-size:12px;box-shadow:0 0 16px rgba(155,109,255,.4)">&#128205;</div>',
+    iconSize:[24,24], iconAnchor:[12,12]
+  });
+  searchMarker = L.marker([lat, lng], {icon:icon}).addTo(map)
+    .bindTooltip('<div style="color:#d0d8e8"><strong>'+name+'</strong><br><span style="font-size:9px;color:#9b6dff">'+lat.toFixed(5)+', '+lng.toFixed(5)+'</span></div>',
+      {className:'mapTip', direction:'top', offset:[0,-14], permanent:true}).openTooltip();
+
+  // Close search
+  $('searchResults').classList.remove('show');
+  toast(name);
+}
+
+// Close results on outside click
+document.addEventListener('click', function(e){
+  if(!e.target.closest('.mapSearch')) {
+    $('searchResults').classList.remove('show');
+  }
+});
+
+// ═══════════ MAP LAYERS ═══════════
+function setLayer(name) {
+  if(currentLayer) map.removeLayer(currentLayer);
+  if(name==='street') currentLayer=streetL;
+  else if(name==='satellite') currentLayer=satL;
+  else if(name==='terrain') currentLayer=terrainL;
+  else currentLayer=darkL;
+  currentLayer.addTo(map);
+  document.querySelectorAll('.layerBtn').forEach(function(b){b.classList.remove('active')});
+  var btn = name==='street'?$('lStreet'):name==='satellite'?$('lSat'):name==='terrain'?$('lTerrain'):$('lDark');
+  if(btn) btn.classList.add('active');
+}
+
+// ═══════════ EVENT MARKERS ═══════════
+var eventMarkers = [];
+function updateMapEvents() {
+  eventMarkers.forEach(function(m){map.removeLayer(m)});
+  eventMarkers=[];
+  var recent = allEvents.slice(-30);
+  recent.forEach(function(e){
+    var lat=BASE[0]+(Math.random()-.5)*.01, lng=BASE[1]+(Math.random()-.5)*.01;
+    var sev=getSeverity(e);
+    var col=sev==='critical'?'#ff3355':sev==='high'?'#ffb520':'#00d4ff';
+    var icon=L.divIcon({className:'',html:'<div style="width:14px;height:14px;border-radius:50%;background:'+col+';opacity:.7;box-shadow:0 0 8px '+col+'"></div>',iconSize:[14,14],iconAnchor:[7,7]});
+    var t=new Date(e.timestamp).toLocaleTimeString('en-US',{hour12:false});
+    var m=L.marker([lat,lng],{icon:icon}).addTo(map)
+      .bindTooltip('<div style="color:#d0d8e8"><strong>'+e.event_type.replace(/_/g,' ')+'</strong><br>Conf: '+((e.confidence||0)*100).toFixed(0)+'%<br>'+t+'</div>',{className:'mapTip',direction:'top',offset:[0,-8]});
+    eventMarkers.push(m);
+  });
+  $('evtBadge').textContent='Events: '+allEvents.length;
+}
+
+// ═══════════ SEVERITY ═══════════
+function getSeverity(e) {
+  var c=e.confidence||0;
+  if(c>.85||e.event_type==='suspicious_vehicle') return 'critical';
+  if(c>.7) return 'high';
+  if(c>.5) return 'medium';
+  return 'low';
+}
+
+// ═══════════ LIVE FEED ═══════════
+function startFeed() {
+  stopFeed();
+  var lastTime=performance.now(), frames=0;
+  streamTimer = setInterval(function(){
+    var url = JETSON+'/image/awareness/image_annotated?t='+Date.now();
+    var img = new Image();
+    img.onload = function(){
+      var fi=$('feedImg'); if(fi){fi.src=img.src; fi.style.display=''}
+      var di=$('detFeedImg'); if(di&&detailOpen) di.src=img.src;
+      frames++;
+      var now=performance.now();
+      if(now-lastTime>=1000){
+        feedFps=Math.round(frames*1000/(now-lastTime));
+        frames=0; lastTime=now;
+        var ft=$('fpsTag'); if(ft) ft.textContent=feedFps+' FPS';
+      }
+    };
+    img.onerror = function(){
+      var fi=$('feedImg'); if(fi) fi.alt='Stream offline';
+    };
+    img.src=url;
+  }, 200);
+}
+
+function stopFeed() { if(streamTimer){clearInterval(streamTimer);streamTimer=null} }
+
+// ═══════════ SENTRY DETAIL VIEW ═══════════
+function openSentryDetail() {
+  detailOpen=true;
+  $('sideDefault').classList.add('hide');
+  $('detailView').classList.add('show');
+  // On mobile, make sure panel is visible
+  if(window.innerWidth <= 768) {
+    document.querySelector('.mapArea').classList.add('mHide');
+    document.querySelector('.sidePanel').classList.add('mShow');
+    document.querySelectorAll('.mTab').forEach(function(t){t.classList.remove('active')});
+    $('mTabSentry').classList.add('active');
+    currentMobileTab = 'sentry';
+  }
+  var di=$('detFeedImg');
+  var fi=$('feedImg');
+  if(fi&&fi.src) di.src=fi.src;
+  updateDetailStats();
+  renderDetailLog();
+}
+
+function closeSentryDetail() {
+  detailOpen=false;
+  $('detailView').classList.remove('show');
+  $('sideDefault').classList.remove('hide');
+  // On mobile, go back to map
+  if(window.innerWidth <= 768 && currentMobileTab === 'sentry') {
+    mobileTab('map');
+  }
+}
+
+$('detBack').onclick=closeSentryDetail;
+
+function updateDetailStats() {
+  var p=0,v=0,pl=0;
+  allEvents.forEach(function(e){
+    if(e.event_type==='person_detected') p++;
+    else if(e.event_type==='vehicle_detected'||e.event_type==='suspicious_vehicle') v++;
+    else if(e.event_type==='license_plate_detected') pl++;
+  });
+  $('dPersons').textContent=p;
+  $('dVehicles').textContent=v;
+  $('dPlates').textContent=pl;
+  $('dEvents').textContent=allEvents.length;
+}
+
+function renderDetailLog() {
+  var el=$('detEventLog');
+  if(!el) return;
+  el.innerHTML = allEvents.slice(-15).reverse().map(function(e){
+    var t=new Date(e.timestamp).toLocaleTimeString('en-US',{hour12:false});
+    var sev=getSeverity(e);
+    return '<div class="evtRow"><div class="evtDot '+sev+'"></div><div class="evtType">'+e.event_type.replace(/_/g,' ')+'</div><div class="evtConf">'+((e.confidence||0)*100).toFixed(0)+'%</div><div class="evtTime">'+t+'</div></div>';
+  }).join('') || '<div style="color:var(--muted);text-align:center;padding:16px;font-size:11px">No events</div>';
+}
+
+// ═══════════ SIDEBAR STATS ═══════════
+function updateSideStats() {
+  var p=0,v=0,pl=0;
+  allEvents.forEach(function(e){
+    if(e.event_type==='person_detected') p++;
+    else if(e.event_type==='vehicle_detected'||e.event_type==='suspicious_vehicle') v++;
+    else if(e.event_type==='license_plate_detected') pl++;
+  });
+  $('sPersons').textContent=p;
+  $('sVehicles').textContent=v;
+  $('sPlates').textContent=pl;
+}
+
+function renderEventLog() {
+  var el=$('eventLog');
+  el.innerHTML = allEvents.slice(-12).reverse().map(function(e){
+    var t=new Date(e.timestamp).toLocaleTimeString('en-US',{hour12:false});
+    var sev=getSeverity(e);
+    return '<div class="evtRow"><div class="evtDot '+sev+'"></div><div class="evtType">'+e.event_type.replace(/_/g,' ')+'</div><div class="evtConf">'+((e.confidence||0)*100).toFixed(0)+'%</div><div class="evtTime">'+t+'</div></div>';
+  }).join('') || '<div style="color:var(--muted);text-align:center;padding:20px;font-size:11px">Waiting for detections...</div>';
+}
+
+// ═══════════ ALERT BANNER ═══════════
+function showAlert(evt) {
+  if(evt.event_type==='heartbeat') return;
+  var sev=getSeverity(evt);
+  var conf=((evt.confidence||0)*100).toFixed(0);
+  var txt=(sev==='critical'?'HIGH PRIORITY':sev==='high'?'PRIORITY':'DETECTION')+' '+evt.event_type.replace(/_/g,' ').toUpperCase()+' — SENTRY-1 — CONF: '+conf+'%';
+  var p=evt.payload||{};
+  if(p.plate) txt+=' — PLATE: '+p.plate;
+  if(p.direction) txt+=' — DIR: '+p.direction.toUpperCase();
+  var ban=$('alertBanner');
+  ban.className='alertBanner sev-'+sev;
+  $('abText').textContent=txt;
+  $('abText2').textContent=txt;
+  var track=$('abTrack'); track.style.animation='none'; void track.offsetWidth; track.style.animation='';
+  ban.classList.add('show');
+  // Audio beep
+  if(sev==='critical'||sev==='high'){try{var ac=new(window.AudioContext||window.webkitAudioContext);var o=ac.createOscillator();var g=ac.createGain();o.connect(g);g.connect(ac.destination);o.frequency.value=sev==='critical'?880:660;g.gain.value=.15;o.start();o.stop(ac.currentTime+.2)}catch(e){}}
+}
+$('abClose').onclick=function(){$('alertBanner').classList.remove('show')};
+
+// ═══════════ LOCAL API (on vehicle Jetson) ═══════════
+function fetchLocalEvents() {
+  fetch(LOCAL_API+'/vehicle/events?limit=50').then(function(r){return r.json()}).then(function(data){
+    allEvents=data.events||data||[];
+    updateSideStats(); renderEventLog(); updateMapEvents();
+    if(detailOpen){updateDetailStats();renderDetailLog()}
+  }).catch(function(){
+    // Fallback to standard events API
+    fetch(LOCAL_API+'/events?limit=50').then(function(r){return r.json()}).then(function(data){
+      allEvents=data.events||data||[];
+      updateSideStats(); renderEventLog(); updateMapEvents();
+    }).catch(function(){});
+  });
+}
+
+function fetchLocalHealth() {
+  fetch(LOCAL_API+'/health').then(function(r){return r.json()}).then(function(d){
+    if(d.database){$('iPG').textContent='Online';$('iPG').style.color='var(--ok)';$('pillPG').className='pill on'}
+    else{$('iPG').textContent='Offline';$('iPG').style.color='var(--bad)';$('pillPG').className='pill off'}
+    if(d.valkey){$('iVK').textContent='Online';$('iVK').style.color='var(--ok)';$('pillVK').className='pill on'}
+    else{$('iVK').textContent='Offline';$('iVK').style.color='var(--bad)';$('pillVK').className='pill off'}
+    if(d.age){$('iAGE').textContent='Online';$('iAGE').style.color='var(--ok)'}
+    else{$('iAGE').textContent='Standby';$('iAGE').style.color='var(--muted)'}
+  }).catch(function(){ $('pillLocal').className='pill off' });
+
+  // Vehicle SQLite stats
+  fetch(LOCAL_API+'/vehicle/stats').then(function(r){return r.json()}).then(function(d){
+    if(d.events){
+      $('sPersons').textContent=d.events.persons||0;
+      $('sVehicles').textContent=d.events.vehicles||0;
+      $('sPlates').textContent=d.events.plates||0;
+    }
+    if(d.images){
+      $('iStore').textContent=d.images.total+' imgs · '+d.images.size_mb+' MB';
+      $('iStore').style.color='var(--ok)';
+    }
+    if(d.sync){
+      $('crQueue').textContent=(d.sync.queue_size||0)+' events';
+      var pct=Math.min(100,(d.sync.queue_size||0)*5);
+      $('syncFill').style.width=pct+'%';
+      $('syncFill').style.background=pct>50?'var(--warn)':'var(--ok)';
+    }
+  }).catch(function(){});
+}
+
+// ═══════════ LOCAL WEBSOCKET ═══════════
+var localWs=null;
+function connectLocalWS() {
+  var wsUrl='ws://'+window.location.host;
+  try{
+    localWs=new WebSocket(wsUrl);
+    localWs.onmessage=function(m){
+      try{
+        var d=JSON.parse(m.data);
+        if(d.type==='event'){
+          var e=d.data;
+          allEvents.push(e);
+          updateSideStats(); renderEventLog(); updateMapEvents();
+          if(detailOpen){updateDetailStats();renderDetailLog()}
+          showAlert(e);
+          // Save to vehicle SQLite (server handles storage)
+          captureAndSave(e);
+        }
+      }catch(ex){}
+    };
+    localWs.onclose=function(){setTimeout(connectLocalWS,3000)};
+  }catch(e){}
+}
+
+// ═══════════ CONTROL ROOM SYNC ═══════════
+function connectCR() {
+  var addr=$('crInput').value.trim();
+  if(!addr) return;
+  if(addr.indexOf('http')!==0) addr='http://'+addr;
+  CR_API=addr;
+  $('crAddr').textContent=addr;
+  $('crAddr').className='connVal ok';
+  toast('Linking to Control Room...');
+
+  // Tell server to sync to this CR address
+  fetch(LOCAL_API+'/vehicle/sync/config',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({address:addr})
+  }).then(function(r){return r.json()}).then(function(d){
+    if(d.ok) toast('Sync agent configured!');
+  }).catch(function(){});
+
+  // Test CR connection
+  var t0=Date.now();
+  fetch(addr+'/api/health',{signal:AbortSignal.timeout(5000)}).then(function(r){return r.json()}).then(function(d){
+    var lat=Date.now()-t0;
+    crConnected=true;
+    $('crStatus').className='statusTag online'; $('crStatus').textContent='CONNECTED';
+    $('pillCR').className='pill on';
+    $('crLatency').textContent=lat+'ms'; $('crLatency').className='connVal ok';
+    toast('Control Room linked! Sync agent running.');
+    // Periodic ping
+    setInterval(pingCR, 10000);
+  }).catch(function(){
+    crConnected=false;
+    $('crStatus').className='statusTag offline'; $('crStatus').textContent='UNREACHABLE';
+    $('pillCR').className='pill off';
+    $('crLatency').textContent='--'; $('crLatency').className='connVal bad';
+    toast('Cannot reach Control Room — events queued locally');
+  });
+}
+
+function pingCR() {
+  if(!CR_API) return;
+  var t0=Date.now();
+  fetch(CR_API+'/api/health',{signal:AbortSignal.timeout(3000)}).then(function(r){return r.json()}).then(function(){
+    var lat=Date.now()-t0;
+    crConnected=true;
+    $('crStatus').className='statusTag online'; $('crStatus').textContent='CONNECTED';
+    $('pillCR').className='pill on';
+    $('crLatency').textContent=lat+'ms'; $('crLatency').className='connVal ok';
+  }).catch(function(){
+    crConnected=false;
+    $('crStatus').className='statusTag offline'; $('crStatus').textContent='DISCONNECTED';
+    $('pillCR').className='pill off';
+    $('crLatency').textContent='--'; $('crLatency').className='connVal bad';
+  });
+  // Update sync status from server
+  fetch(LOCAL_API+'/vehicle/sync/status').then(function(r){return r.json()}).then(function(d){
+    $('crQueue').textContent=(d.queue?d.queue.events:0)+' events';
+    if(d.last_sync) {
+      var t=new Date(d.last_sync).toLocaleTimeString('en-US',{hour12:false});
+      $('crLastSync').textContent=t; $('crLastSync').className='connVal ok';
+    }
+    var qSize=d.queue?d.queue.events:0;
+    var pct=Math.min(100,qSize*5);
+    $('syncFill').style.width=pct+'%';
+    $('syncFill').style.background=pct>50?'var(--warn)':'var(--ok)';
+  }).catch(function(){});
+}
+
+// Force sync button (hidden, callable)
+function forceSync() {
+  fetch(LOCAL_API+'/vehicle/sync/flush',{method:'POST'}).then(function(r){return r.json()}).then(function(d){
+    toast('Flushed: '+(d.sent||0)+' events synced');
+  }).catch(function(){toast('Sync failed')});
+}
+
+// ═══════════ CAPTURE + SAVE TO SQLITE ═══════════
+var captureCanvas=null, captureCtx=null;
+function captureAndSave(event) {
+  var img=$('feedImg');
+  if(!img||!img.naturalWidth) {
+    // No image available, save event without image
+    fetch(LOCAL_API+'/vehicle/detect',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({event:event,image:null})
+    }).catch(function(){});
+    return;
+  }
+  // Capture current frame to canvas → base64
+  if(!captureCanvas) {
+    captureCanvas=document.createElement('canvas');
+    captureCtx=captureCanvas.getContext('2d');
+  }
+  captureCanvas.width=img.naturalWidth;
+  captureCanvas.height=img.naturalHeight;
+  try {
+    captureCtx.drawImage(img,0,0);
+    var b64=captureCanvas.toDataURL('image/jpeg',0.85);
+    fetch(LOCAL_API+'/vehicle/detect',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({event:event,image:b64})
+    }).catch(function(){});
+  } catch(e) {
+    // CORS or tainted canvas — save without image
+    fetch(LOCAL_API+'/vehicle/detect',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({event:event,image:null})
+    }).catch(function(){});
+  }
+}
+
+// ═══════════ MOBILE TAB SWITCHING ═══════════
+var currentMobileTab = 'map';
+
+function mobileTab(tab) {
+  currentMobileTab = tab;
+  var mapEl = document.querySelector('.mapArea');
+  var panel = document.querySelector('.sidePanel');
+
+  // Reset
+  document.querySelectorAll('.mTab').forEach(function(t){t.classList.remove('active')});
+  mapEl.classList.remove('mHide');
+  panel.classList.remove('mShow');
+
+  // Close detail view when switching tabs (unless going to sentry)
+  if(tab !== 'sentry' && detailOpen) closeSentryDetail();
+
+  if(tab === 'map') {
+    $('mTabMap').classList.add('active');
+    panel.classList.remove('mShow');
+    setTimeout(function(){ if(map) map.invalidateSize() }, 100);
+  } else if(tab === 'sentry') {
+    $('mTabSentry').classList.add('active');
+    mapEl.classList.add('mHide');
+    panel.classList.add('mShow');
+    openSentryDetail();
+  } else if(tab === 'link') {
+    $('mTabLink').classList.add('active');
+    mapEl.classList.add('mHide');
+    panel.classList.add('mShow');
+    if(detailOpen) closeSentryDetail();
+    // Scroll to connection section
+    var connSection = document.querySelectorAll('.panelSection')[1];
+    if(connSection) connSection.scrollIntoView({behavior:'smooth'});
+  } else if(tab === 'events') {
+    $('mTabEvents').classList.add('active');
+    mapEl.classList.add('mHide');
+    panel.classList.add('mShow');
+    if(detailOpen) closeSentryDetail();
+    // Scroll to events section
+    var evtSection = document.querySelectorAll('.panelSection')[3];
+    if(evtSection) evtSection.scrollIntoView({behavior:'smooth'});
+  }
+}
+
+// ═══════════ BOOT ═══════════
+function boot() {
+  initMap();
+  startFeed();
+  fetchLocalEvents();
+  fetchLocalHealth();
+  connectLocalWS();
+  setInterval(fetchLocalEvents, 15000);
+  setInterval(fetchLocalHealth, 30000);
+  window.addEventListener('resize',function(){
+    if(map) setTimeout(function(){ map.invalidateSize() }, 150);
+  });
+  window.addEventListener('orientationchange',function(){
+    if(map) setTimeout(function(){ map.invalidateSize() }, 300);
+  });
+  setTimeout(function(){ if(map) map.invalidateSize() },500);
+}
+
+checkSession();
+</script>
+</body>
+</html>

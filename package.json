@@ -1,0 +1,28 @@
+{
+  "name": "tactix-mct",
+  "version": "1.0.0",
+  "description": "TactixGlobalMCT — Mission Control Dashboard with PostgreSQL backend",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
+    "db:init": "psql -U postgres -d tactix_mct -f db/001_schema.sql",
+    "db:create": "createdb -U postgres tactix_mct || echo 'DB already exists'",
+    "setup": "npm run db:create && npm run db:init",
+    "seed": "node server/seed.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "ioredis": "^5.10.0",
+    "openmct": "4.0.0",
+    "pg": "^8.13.0",
+    "uuid": "^14.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
